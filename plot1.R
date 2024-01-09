@@ -1,38 +1,31 @@
-# Define the destination where the file will be saved
-destfile <- "household_power_consumption.zip"
+# Load required packages
+library(ggplot2)
 
-# Unzip the file
-unzip(destfile)
-
-# 必要なパッケージを読み込む
-if (!require(data.table)) {
-  install.packages("data.table")
+# Define a function to load data
+load_data <- function(filepath) {
+  # Read data from the specified file
+  # Treat '?' as NA while reading data
+  data <- read.table(filepath, header = TRUE, sep = ";", na.strings = "?")
+  
+  # Convert Date and Time into POSIXct and combine them
+  data$Datetime <- as.POSIXct(paste(data$Date, data$Time), format="%d/%m/%Y %H:%M:%S")
+  
+  # Retrieve the necessary subset of data
+  data <- subset(data, Datetime >= as.POSIXct("2007-02-01") & Datetime < as.POSIXct("2007-02-03"))
+  
+  return(data)
 }
-library(data.table)
 
-# データファイルのパスを指定してください
-file_path <- "household_power_consumption.txt"
+# Load the data
+data <- load_data("household_power_consumption.txt")  # Replace with your actual data file path
 
-# データを読み込む際に、特定の列の型を指定
-data <- fread(file_path, 
-              na.strings="?", 
-              colClasses=c("character", "character", "numeric", "numeric", 
-                           "numeric", "numeric", "numeric", "numeric", "numeric"),
-              col.names=c("Date", "Time", "Global_active_power", "Global_reactive_power", 
-                          "Voltage", "Global_intensity", "Sub_metering_1", 
-                          "Sub_metering_2", "Sub_metering_3"))
+# Create Plot 2
+plot2 <- ggplot(data, aes(x = Datetime, y = Global_active_power)) +
+  geom_line() +
+  labs(title = "Global Active Power",
+       x = "Time",
+       y = "Global Active Power (kilowatts)") +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1))
 
-# 日付と時刻を結合してPOSIXct型に変換
-data[, DateTime := as.POSIXct(paste(Date, Time), format="%d/%m/%Y %H:%M:%S")]
-
-# 2007年2月1日と2月2日のデータに絞る
-data <- data[(DateTime >= "2007-02-01") & (DateTime < "2007-02-03")]
-
-# プロットを作成する
-png(file="plot1.png", width=480, height=480)
-hist(data$Global_active_power, 
-     main="Global Active Power", 
-     xlab="Global Active Power (kilowatts)", 
-     ylab="Frequency", 
-     col="red")
-dev.off()
+# Save Plot 2 as a PNG file
+ggsave("plot2.png", plot2, width = 480 / 96, height = 480 / 96, dpi = 96)
