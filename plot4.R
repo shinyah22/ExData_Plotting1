@@ -1,51 +1,70 @@
-# Load necessary libraries
-if (!require("ggplot2")) install.packages("ggplot2")
-if (!require("gridExtra")) install.packages("gridExtra")
-library(ggplot2)
-library(gridExtra)
+library(data.table)
 
-# Function to load and preprocess the data
-load_data <- function(filepath) {
-  data <- read.table(filepath, header = TRUE, sep = ";", na.strings = "?", 
-                     colClasses = c("character", "character", "numeric", "numeric", 
-                                    "numeric", "numeric", "numeric", "numeric", "numeric"))
-  data$Date <- as.Date(data$Date, format="%d/%m/%Y")
-  data$Time <- strptime(data$Time, format="%H:%M:%S")
-  data$DateTime <- as.POSIXct(paste(data$Date, format(data$Time, "%H:%M:%S")), format="%Y-%m-%d %H:%M:%S")
-  # Filter data for the dates of interest
-  data <- subset(data, data$Date >= as.Date("2007-02-01") & data$Date < as.Date("2007-02-03"))
-  # Extract the day of the week
-  data$Weekday <- weekdays(data$DateTime)
-  return(data)
+# Load data
+file_path <- "household_power_consumption.txt"
+data <- fread(file_path, colClasses = c("character", "character", rep("numeric", 7)), na.strings = "?")
+
+# Preprocess data
+data[, Date := as.Date(Date, format="%d/%m/%Y")]
+data[, Time := as.POSIXct(Time, format="%H:%M:%S")]
+subset_data <- data[Date >= as.Date("2007-02-01") & Date <= as.Date("2007-02-02")]
+subset_data[, weekday := weekdays(Date)]
+
+# Define the positions for the x-axis ticks
+thursday_start <- which(subset_data$weekday == "Thursday")[1]
+friday_start <- which(subset_data$weekday == "Friday")[1]
+saturday_start <- length(subset_data$Global_active_power)
+xaxt <- c(thursday_start, friday_start, saturday_start)
+xaxt_labels <- c("Thu", "Fri", "Sat")
+
+# Start the PNG device
+png_filename <- "plot4.png"
+png(png_filename, width = 480, height = 480)
+
+# Set up a 2x2 plot layout
+par(mfrow=c(2,2))
+
+# List of columns to plot
+column_list <- c("Global_active_power", "Voltage", "Global_reactive_power")
+
+# Plot the first two columns
+for (y_column_name in column_list[1:2]) {
+  ylab <- gsub("_", " ", y_column_name)
+  ylab <- sapply(strsplit(ylab, " ")[[1]], function(word) {
+    paste(toupper(substring(word, 1, 1)), substring(word, 2), sep = "", collapse = NULL)
+  })
+  ylab <- paste(ylab, collapse = " ")
+  
+  plot(subset_data[[y_column_name]], type = "l", xaxt = "n", xlab = "Datetime", 
+       ylab = ylab, xlim = c(1, length(subset_data[[y_column_name]])), 
+       ylim = range(subset_data[[y_column_name]], na.rm = TRUE))
+  axis(1, at = xaxt, labels = xaxt_labels)
 }
 
-# Load the data
-data <- load_data("household_power_consumption.txt")  # Replace with the actual file path
+# Plot the third plot with plot_time_series_3_line
+# Plot the data for sub-metering 1, 2, and 3
+plot(subset_data$Sub_metering_1, type = "l", col = "black", xaxt = "n", xlab = "", ylab = "Energy sub metering", 
+     xlim = c(1, length(subset_data$Global_active_power)), ylim = range(c(subset_data$Sub_metering_1, subset_data$Sub_metering_2, subset_data$Sub_metering_3), na.rm = TRUE))
+lines(subset_data$Sub_metering_2, type = "l", col = "red")
+lines(subset_data$Sub_metering_3, type = "l", col = "blue")
+axis(1, at = xaxt, labels = xaxt_labels)
+legend("topright", legend = c("Sub_metering_1", "Sub_metering_2", "Sub_metering_3"), 
+       col = c("black", "red", "blue"), lty = 1)
 
-# Plot 4a: Line plot for Global Active Power
-plot4a <- ggplot(data, aes(x = DateTime, y = Global_active_power)) +
-  geom_line(color = "blue") +
-  labs(x = "Time", y = "Global Active Power (kilowatts)")
+# If there's a fourth y-column, plot it; otherwise, leave the space blank
+if (length(column_list) > 2) {
+  y_column_name <- column_list[3]
+  ylab <- gsub("_", " ", y_column_name)
+  ylab <- sapply(strsplit(ylab, " ")[[1]], function(word) {
+    paste(toupper(substring(word, 1, 1)), substring(word, 2), sep = "", collapse = NULL)
+  })
+  ylab <- paste(ylab, collapse = " ")
+  
+  plot(subset_data[[y_column_name]], type = "l", xaxt = "n", xlab = "Datetime", 
+       ylab = ylab, xlim = c(1, length(subset_data[[y_column_name]])), 
+       ylim = range(subset_data[[y_column_name]], na.rm = TRUE))
+  axis(1, at = xaxt, labels = xaxt_labels)
+}
 
-# Plot 4b: Line plot for Voltage over time
-plot4b <- ggplot(data, aes(x = DateTime, y = Voltage)) +
-  geom_line(color = "red") +
-  labs(x = "Time", y = "Voltage (Volts)")
-
-# Plot 4c: Line plots for each sub-metering value over time
-plot4c <- ggplot(data) +
-  geom_line(aes(x = DateTime, y = Sub_metering_1), color = "red") +
-  geom_line(aes(x = DateTime, y = Sub_metering_2), color = "green") +
-  geom_line(aes(x = DateTime, y = Sub_metering_3), color = "blue") +
-  labs(x = "Time", y = "Sub_metering (Watt-hours)")
-
-# Plot 4d: Line plot for Global Reactive Power over time
-plot4d <- ggplot(data, aes(x = DateTime, y = Global_reactive_power)) +
-  geom_line(color = "green") +
-  labs(x = "Time", y = "Global Reactive Power (kilowatts)")
-
-# Combine all plots into one file
-plot4 <- grid.arrange(plot4a, plot4b, plot4c, plot4d, nrow = 2, ncol = 2)
-
-# Save the plot4 to a PNG file
-ggsave("plot4.png", multiplot, width = 504/96, height = 504/96, dpi = 96)
+# End the PNG device
+dev.off()

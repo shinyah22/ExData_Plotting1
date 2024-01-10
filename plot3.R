@@ -1,36 +1,45 @@
-# Load libraries
-library(ggplot2)
+library(data.table)
 
-# Function to load and preprocess the data
-load_data <- function(filepath) {
-  data <- read.table(filepath, header = TRUE, sep = ";", na.strings = "?", 
-                     colClasses = c("character", "character", "numeric", "numeric", 
-                                    "numeric", "numeric", "numeric", "numeric", "numeric"))
-  # Convert the Date and Time into POSIXct format
-  data$Date <- as.Date(data$Date, format="%d/%m/%Y")
-  data$Time <- strptime(data$Time, format="%H:%M:%S")
-  data$DateTime <- as.POSIXct(paste(data$Date, format(data$Time, "%H:%M:%S")), format="%Y-%m-%d %H:%M:%S")
-  # Filter data for the specified dates
-  data <- subset(data, data$Date >= as.Date("2007-02-01") & data$Date < as.Date("2007-02-03"))
-  # Extract the weekday from the DateTime
-  data$Weekday <- weekdays(data$DateTime)
-  return(data)
-}
+# Load data
+file_path <- "household_power_consumption.txt"
+data <- fread(file_path, 
+              colClasses = c("character", "character", rep("numeric", 7)),
+              na.strings = "?")
 
-# Load the data
-data <- load_data("household_power_consumption.txt") # Replace with the appropriate file path.
+# Preprocess data
+data[, Date := as.Date(Date, format="%d/%m/%Y")]
+data[, Time := as.POSIXct(Time, format="%H:%M:%S")]
+subset_data <- data[Date >= as.Date("2007-02-01") & Date <= as.Date("2007-02-02")]
+subset_data[, weekday := weekdays(Date)]
 
-# Create Plot 3
-plot3 <- ggplot(data, aes(x = DateTime)) +
-  geom_line(aes(y = Sub_metering_1, colour = "Sub_metering_1")) +
-  geom_line(aes(y = Sub_metering_2, colour = "Sub_metering_2")) +
-  geom_line(aes(y = Sub_metering_3, colour = "Sub_metering_3")) +
-  labs(x = "Day of the Week",
-       y = "Energy sub metering") +
-  scale_colour_manual(values = c("Sub_metering_1" = "black", 
-                                 "Sub_metering_2" = "red", 
-                                 "Sub_metering_3" = "blue")) +
-  theme(axis.text.x = element_text(angle = 90, hjust = 1))
+# Plotting
+png_filename <- "plot3.png"
+png(png_filename, width = 480, height = 480)
 
-# Save the plot as a PNG file
-ggsave("plot3.png", plot3, width = 480 / 96, height = 480 / 96, dpi = 96)
+# Find the start index for Thursday and Friday
+thursday_start <- which(subset_data$weekday == "Thursday")[1]
+friday_start <- which(subset_data$weekday == "Friday")[1]
+saturday_start <- length(subset_data$Global_active_power)
+
+# Define the positions for the x-axis ticks
+xaxt <- c(thursday_start, friday_start, saturday_start)
+
+# Define the labels for the x-axis ticks
+xaxt_labels <- c("Thu", "Fri", "Sat")
+
+# Plot the data for sub-metering 1, 2, and 3
+plot(subset_data$Sub_metering_1, type = "l", col = "black", xaxt = "n", xlab = "", ylab = "Energy sub metering", 
+     xlim = c(1, length(subset_data$Global_active_power)), ylim = range(c(subset_data$Sub_metering_1, subset_data$Sub_metering_2, subset_data$Sub_metering_3), na.rm = TRUE))
+lines(subset_data$Sub_metering_2, type = "l", col = "red")
+lines(subset_data$Sub_metering_3, type = "l", col = "blue")
+
+# Add the custom x-axis
+axis(1, at = xaxt, labels = xaxt_labels)
+
+# Add a legend
+legend("topright", legend = c("Sub_metering_1", "Sub_metering_2", "Sub_metering_3"), 
+       col = c("black", "red", "blue"), lty = 1)
+
+# End the PNG device
+dev.off()
+
